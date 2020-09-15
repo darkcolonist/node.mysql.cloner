@@ -9,6 +9,7 @@
   "author": "cris@nms.ph",
   "license": "ISC",
   "dependencies": {
-    "yargs": "^16.0.3"
+    "minimist": "^1.2.5",
+    "moment": "^2.28.0"
   }
 }
