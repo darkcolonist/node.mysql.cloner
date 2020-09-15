@@ -1,0 +1,14 @@
+{
+  "name": "node.mysql.cloner",
+  "version": "1.0.0",
+  "description": "clone an entire mysql database from source to target",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "cris@nms.ph",
+  "license": "ISC",
+  "dependencies": {
+    "yargs": "^16.0.3"
+  }
+}
