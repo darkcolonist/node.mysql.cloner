@@ -19,9 +19,14 @@ function log(...message){
 }
 
 function terminate(...message){
-  console.log(moment().format(),":", chalk.red(...message));
+  var curseconds = new Date().getTime();
+  var dur = curseconds - appseconds;
+  appseconds = new Date().getTime();
+  console.log(moment().format(),":", chalk.red(...message), chalk.yellow("+"+dur+"ms"));
   process.exit(1);
 }
+
+log('starting application');
 
 let args = minimist(process.argv.slice(2), {
     default: {
@@ -33,8 +38,12 @@ if(args.file === undefined || args.file == ""){
   terminate("usage:\nnode index.js --file=\"db-config.json\"");
 }
 
+if(!args.file.endsWith(".json")){
+  terminate("error: file should be a valid .json file. example: ./configs/job.json");
+}
+
 if(!fs.existsSync(args.file)){
-  log(args.file, "file not found.");
+  terminate(args.file, "file not found.");
 }
 
 log("loading",args.file);
@@ -42,7 +51,7 @@ var loadedConfig = {};
 try{
   loadedConfig = require("./"+args.file);
 }catch(e){
-  terminate("malformed loadedConfig file in", args.file);
+  terminate("malformed loadedConfig file in", args.file, e);
 }
 
 /**
@@ -93,12 +102,13 @@ sequence
      */
     // create target db first
     log(chalk.yellow("creating database target"));
-    next();
+    setTimeout(next, 2000); // testing
+    // next();
   })
 
   .then((next) => {
     log(chalk.cyan("new sequence"));
-    setTimeout(next, 2000);
+    next();
   }) // just duplicate this function if you want to add a sequence
 
   .then((next) => {
