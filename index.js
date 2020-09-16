@@ -6,8 +6,9 @@ const minimist = require('minimist'),
       fs = require('fs'),
       moment = require('moment'),
       sequence = require('futures').sequence(),
-      chalk = require('chalk')
-      ;
+      chalk = require('chalk'),
+      { exec } = require('child_process')
+    ;
 
 var appseconds = new Date().getTime();
 var mysqlDumpOptions = "--lock-tables=false --skip-extended-insert";
@@ -33,7 +34,7 @@ log('starting application');
 
 let args = minimist(process.argv.slice(2), {
     default: {
-        port: 8080
+        something: "nothing"
     },
 });
 
@@ -63,7 +64,7 @@ try{
 const mysql = require('mysql');
 
 sequence
-  .then((next) => {
+  .then((next, err) => {
     // test source connection
     const sourceConnection = mysql.createConnection({
       host: loadedConfig.source.host,
@@ -78,12 +79,60 @@ sequence
         terminate("problem connecting");
       }
       log("passed");
-      sourceConnection.end();
-      next();
+      next(err, { sourceConnection: sourceConnection });
     });
   })
 
-  .then((next) => {
+  .then((next, err, passthru) => {
+    var sourceConnection = passthru.sourceConnection;
+
+    var statement = `SELECT TABLE_NAME AS _tables`+
+      ` FROM INFORMATION_SCHEMA.TABLES`+
+      ` WHERE TABLE_SCHEMA = '${loadedConfig.source.database}'`;
+
+    sourceConnection.query(statement, (err, result) => {
+      if(err)
+        terminate("unable to fetch tables from source", err);
+
+      sourceConnection.end();
+
+      var tables = [];
+      var skipped = [];
+      var hasWhere = [];
+
+      // get list of tables then double check with loadedConfig.options.skip (skip table)
+      // get list of tables then double check with loadedConfig.options.where (limit or special rule)
+      for (var i = 0; i < result.length; i++) {
+        let resultTableName = result[i]["_tables"];
+        let where = undefined;
+
+        if(loadedConfig.options["skip-data"].indexOf(resultTableName) != -1){
+          skipped.push(resultTableName);
+          continue; // skip this table
+        }
+
+        if(loadedConfig.options.where[resultTableName] != undefined){
+          hasWhere.push(resultTableName);
+          where = loadedConfig.options.where[resultTableName];
+        }
+        
+        tables.push({
+          name: resultTableName,
+          where: where
+        });
+      }
+
+      log(result.length, "tables found in source");
+      log(skipped.length, "tables skipped");
+      log(tables.length, "tables to process");
+      log(hasWhere.length, "tables that have conditions");
+
+      next(err, { tables: tables });
+    })
+  })
+
+  .then((next, err, passthru) => {
+    // test target connection
     const targetConnection = mysql.createConnection({
       host: loadedConfig.target.host,
       port: loadedConfig.target.port,
@@ -98,12 +147,12 @@ sequence
       }
       log("passed");
       targetConnection.end();
-      next();
+      next(err, passthru);
     });
   })
 
-  .then((next, err) => {
-    // TODO: create target DB
+  .then((next, err, passthru) => {
+    // create target DB
     log(chalk.yellow("creating database target"));
 
     var targetDatabaseName = loadedConfig.target.database;
@@ -112,18 +161,31 @@ sequence
       targetDatabaseName = targetDatabaseName + moment().format("YYYYMMDDHHmmss");
     }
 
-    var passthru = {
-      targetDatabaseName: targetDatabaseName
-    };
+    passthru.targetDatabaseName = targetDatabaseName;
+
     var createCommand = `mysql`+
       ` -h"${loadedConfig.target.host}"`+
       ` -u"${loadedConfig.target.user}"`+
       ` -p"${loadedConfig.target.password}"`+
       ` -P"${loadedConfig.target.port}"`+
       ` -e"create database ${targetDatabaseName};"`;
-    log(chalk.bgYellow.black("TODO createCommand"),createCommand);
+    // log(chalk.bgYellow.black("TODO createCommand"),createCommand);
+    exec(createCommand, (err, stdout, stderr) => {
+      if(err){
+        terminate("target database can't be created");
+      }
+      log("target database created successfully");
+      next(err, passthru);
+    });
+  })
 
-    // TODO: clone structure of source db -> target DB
+  .then((next, err, passthru) => {
+    // log("received", passthru);
+    log(chalk.yellow("cloning source structure into target"));
+
+    var targetDatabaseName = passthru.targetDatabaseName;
+
+    // clone structure of source db -> target DB
     var cloneStructureCommandDump = `mysqldump`+
       ` ${mysqlDumpOptions} --no-data`+
       ` -h"${loadedConfig.source.host}"`+
@@ -138,27 +200,81 @@ sequence
       ` -p"${loadedConfig.target.password}"`+
       ` -P"${loadedConfig.target.port}"`+
       ` ${targetDatabaseName}`;
-    // import_command="mysql $t_options -h$t_host -u$t_user -p'$t_password' $t_database"
-    var cloneStructureCommand = `${cloneStructureCommandDump} | ${cloneStructureCommandImport}`;
-    log(chalk.bgYellow.black("TODO cloneStructureCommandDump"),cloneStructureCommandDump);
-    log(chalk.bgYellow.black("TODO cloneStructureCommandImport"),cloneStructureCommandImport);
-    log(chalk.bgYellow.black("TODO cloneStructureCommand"),cloneStructureCommand);
 
-    // TODO: get list of tables then double check with loadedConfig.options.skip (skip table)
-    // TODO: get list of tables then double check with loadedConfig.options.where (limit or special rule)
-    // setTimeout(next, 500); // testing delay
-    next(err, passthru);
+    var cloneStructureCommand = `${cloneStructureCommandDump} | ${cloneStructureCommandImport}`;
+
+    exec(cloneStructureCommand, (err, stdout, stderr) => {
+      if(err){
+        terminate("cloning failed");
+      }
+      log("cloning success");
+      next(err, passthru);
+    });
   })
 
   .then((next, err, passthru) => {
-    log("received", passthru);
-    next();
-  }) // just duplicate this function if you want to add a sequence
+    // import tables one by one
+    // log("TODO: import tables one by one sequentially");
+    log(chalk.yellow("processing tables now"));
 
-  .then((next) => {
-    log(chalk.cyan("new sequence"));
-    next();
-  }) // just duplicate this function if you want to add a sequence
+    // var targetDatabaseName = passthru.targetDatabaseName;
+    var targetDatabaseName = "_delete_me_20200916161331"; // TODO: test
+    var tables = passthru.tables;
+
+    function tableJob(tables, index){
+      if(tables[index] !== undefined){
+        var theTable = tables[index];
+        log("processing", theTable.name, `(${index+1}/${tables.length})`);
+
+        var whereClause = "";
+
+        if(theTable.where !== undefined)
+          whereClause = ` --where="${theTable.where}"`;
+
+        // clone structure of source db -> target DB
+        var cloneTableDataCommandDump = `mysqldump`+
+          ` ${mysqlDumpOptions}`+
+          ` -h"${loadedConfig.source.host}"`+
+          ` -u"${loadedConfig.source.user}"`+
+          ` -p"${loadedConfig.source.password}"`+
+          ` -P"${loadedConfig.source.port}"`+
+          ` ${whereClause}`+
+          ` ${loadedConfig.source.database} ${theTable.name}`;
+
+        var cloneTableDataCommandImport = `mysql`+
+          ` -h"${loadedConfig.target.host}"`+
+          ` -u"${loadedConfig.target.user}"`+
+          ` -p"${loadedConfig.target.password}"`+
+          ` -P"${loadedConfig.target.port}"`+
+          ` ${targetDatabaseName}`;
+          
+        var cloneTableDataCommand = `${cloneTableDataCommandDump} | ${cloneTableDataCommandImport}`;
+
+        /*log(cloneTableDataCommand);
+        tableJob(tables, index + 1);*/
+
+        exec(cloneTableDataCommand, (err, stdout, stderr) => {
+          if(err){
+            terminate("cloning failed");
+          }
+
+          log(theTable.name, "done");
+          
+          if(index < tables.length)
+            tableJob(tables, index + 1);
+          else
+            next(); // all tables are done
+        });
+      }
+    }
+
+    tableJob(tables, 0);
+  })
+
+  // .then((next) => {
+  //   log(chalk.cyan("new sequence"));
+  //   next();
+  // }) // just duplicate this function if you want to add a sequence
 
   .then((next) => {
     /**
