@@ -1,11 +1,26 @@
 'use strict';
-
+/**
+ * validate input args
+ */
 const minimist = require('minimist'),
       fs = require('fs'),
-      moment = require('moment');
+      moment = require('moment'),
+      sequence = require('futures').sequence(),
+      chalk = require('chalk')
+      ;
+
+var appseconds = new Date().getTime();
 
 function log(...message){
-  console.log(moment().format(),":", ...message);
+  var curseconds = new Date().getTime();
+  var dur = curseconds - appseconds;
+  appseconds = new Date().getTime();
+  console.log(moment().format(),":", ...message, chalk.cyan("+"+dur+"ms"));
+}
+
+function terminate(...message){
+  console.log(moment().format(),":", chalk.red(...message));
+  process.exit(1);
 }
 
 let args = minimist(process.argv.slice(2), {
@@ -15,24 +30,81 @@ let args = minimist(process.argv.slice(2), {
 });
 
 if(args.file === undefined || args.file == ""){
-  log("usage:\nnode index.js --file=\"./db-config.json\"");
-  process.exit(1);
+  terminate("usage:\nnode index.js --file=\"db-config.json\"");
 }
 
 if(!fs.existsSync(args.file)){
   log(args.file, "file not found.");
 }
 
-var json = {};
+log("loading",args.file);
+var loadedConfig = {};
 try{
-  json = require(args.file);
-
-  // var rawData = fs.readFileSync(args.file, "utf8");
-  // json = JSON.parse(JSON.stringify(rawData));
+  loadedConfig = require("./"+args.file);
 }catch(e){
-  log("malformed json file in", args.file);
-  log(e);
-  process.exit(1);
+  terminate("malformed loadedConfig file in", args.file);
 }
 
-log(json.source.user);
+/**
+ * test mysql connections
+ */
+const mysql = require('mysql');
+sequence
+  .then((next) => {
+    // test source connection
+    const sourceConnection = mysql.createConnection({
+    host: loadedConfig.source.host,
+    user: loadedConfig.source.user,
+    password: loadedConfig.source.password,
+    database: loadedConfig.source.database
+    });
+    log("testing connection to source");
+    sourceConnection.connect((err) => {
+      if(err){
+        terminate("problem connecting");
+      }
+      log("passed");
+      sourceConnection.end();
+      next();
+    });
+  })
+
+  .then((next) => {
+    const targetConnection = mysql.createConnection({
+      host: loadedConfig.target.host,
+      user: loadedConfig.target.user,
+      password: loadedConfig.target.password
+      // database: loadedConfig.target.database // non-existent yet
+    });
+    log("testing connection to target");
+    targetConnection.connect((err) => {
+      if(err){
+        terminate("problem connecting");
+      }
+      log("passed");
+      targetConnection.end();
+      next();
+    });
+  })
+
+  .then((next) => {
+    /**
+     * create dump scripts
+     */
+    // create target db first
+    log(chalk.yellow("creating database target"));
+    next();
+  })
+
+  .then((next) => {
+    log(chalk.cyan("new sequence"));
+    setTimeout(next, 2000);
+  }) // just duplicate this function if you want to add a sequence
+
+  .then((next) => {
+    /**
+     * all tasks done
+     */
+    log(chalk.green("all done!"));
+    next();
+  }); // end of sequence
