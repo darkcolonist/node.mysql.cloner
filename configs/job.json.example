@@ -1,18 +1,21 @@
 {
   "source":{
     "host":"localhost",
+    "port":"3306",
     "user":"root",
     "password":"EXAMPLE123",
     "database":"db_main"
   },
   "target":{
     "host":"localhost",
+    "port":"3306",
     "user":"root",
     "password":"EXAMPLE123",
-    "database":"db_target_"
+    "database":"db_target_",
+    "timestamp":true
   },
   "options":{
-    "skip":[
+    "skip-data":[
       "tbl_logs_1",
       "tbl_logs_2",
       "tbl_logs_3",
