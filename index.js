@@ -7,7 +7,8 @@ const minimist = require('minimist'),
       moment = require('moment'),
       sequence = require('futures').sequence(),
       chalk = require('chalk'),
-      { exec } = require('child_process')
+      { exec } = require('child_process'),
+      appconfig = require('./application.json')
     ;
 
 var appseconds = new Date().getTime();
@@ -31,6 +32,10 @@ function terminate(...message){
 }
 
 log('starting application');
+
+log("application.json loaded");
+log("mysql path", "\""+appconfig.mysql_path+"\"");
+log("mysqldump path", "\""+appconfig.mysqldump_path+"\"");
 
 let args = minimist(process.argv.slice(2), {
     default: {
@@ -163,7 +168,7 @@ sequence
 
     passthru.targetDatabaseName = targetDatabaseName;
 
-    var createCommand = `mysql`+
+    var createCommand = appconfig.mysql_path +
       ` -h"${loadedConfig.target.host}"`+
       ` -u"${loadedConfig.target.user}"`+
       ` -p"${loadedConfig.target.password}"`+
@@ -172,6 +177,7 @@ sequence
     // log(chalk.bgYellow.black("TODO createCommand"),createCommand);
     exec(createCommand, (err, stdout, stderr) => {
       if(err){
+        log(stderr);
         terminate("target database can't be created");
       }
       log("target database created successfully");
@@ -186,7 +192,7 @@ sequence
     var targetDatabaseName = passthru.targetDatabaseName;
 
     // clone structure of source db -> target DB
-    var cloneStructureCommandDump = `mysqldump`+
+    var cloneStructureCommandDump = appconfig.mysqldump_path +
       ` ${mysqlDumpOptions} --no-data`+
       ` -h"${loadedConfig.source.host}"`+
       ` -u"${loadedConfig.source.user}"`+
@@ -194,7 +200,7 @@ sequence
       ` -P"${loadedConfig.source.port}"`+
       ` ${loadedConfig.source.database}`;
 
-    var cloneStructureCommandImport = `mysql`+
+    var cloneStructureCommandImport = appconfig.mysql_path +
       ` -h"${loadedConfig.target.host}"`+
       ` -u"${loadedConfig.target.user}"`+
       ` -p"${loadedConfig.target.password}"`+
@@ -205,6 +211,7 @@ sequence
 
     exec(cloneStructureCommand, (err, stdout, stderr) => {
       if(err){
+        log(stderr);
         terminate("cloning failed");
       }
       log("cloning success");
@@ -241,7 +248,7 @@ sequence
           ` ${whereClause}`+
           ` ${loadedConfig.source.database} ${theTable.name}`;
 
-        var cloneTableDataCommandImport = `mysql`+
+        var cloneTableDataCommandImport = appconfig.mysql_path +
           ` -h"${loadedConfig.target.host}"`+
           ` -u"${loadedConfig.target.user}"`+
           ` -p"${loadedConfig.target.password}"`+
@@ -255,6 +262,7 @@ sequence
 
         exec(cloneTableDataCommand, (err, stdout, stderr) => {
           if(err){
+            log(stderr);
             terminate("cloning failed");
           }
 
