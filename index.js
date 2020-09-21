@@ -239,7 +239,7 @@ sequence
           whereClause = ` --where="${theTable.where}"`;
 
         // clone structure of source db -> target DB
-        var cloneTableDataCommandDump = `mysqldump`+
+        var cloneTableDataCommandDump = appconfig.mysqldump_path +
           ` ${mysqlDumpOptions}`+
           ` -h"${loadedConfig.source.host}"`+
           ` -u"${loadedConfig.source.user}"`+
