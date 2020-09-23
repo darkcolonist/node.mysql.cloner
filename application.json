@@ -1,6 +1,0 @@
-{
-  "mysql_path":"mysql",
-  "mysql_path":"D:\\wamp64.old\\bin\\mariadb\\mariadb10.4.10\\bin\\mysql.exe",
-  "mysqldump_path":"mysqldump",
-  "mysqldump_path":"D:\\wamp64\\bin\\mariadb\\mariadb10.5.4\\bin\\mysqldump.exe"
-}

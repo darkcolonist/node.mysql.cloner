@@ -1,0 +1,4 @@
+{
+  "mysql_path":"mysql.exe",
+  "mysqldump_path":"mysqldump.exe"
+}
