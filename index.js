@@ -7,12 +7,17 @@ const minimist = require('minimist'),
       moment = require('moment'),
       sequence = require('futures').sequence(),
       chalk = require('chalk'),
-      { exec } = require('child_process'),
-      appconfig = require('./application.json')
+      { exec } = require('child_process')
     ;
 
 var appseconds = new Date().getTime();
 var mysqlDumpOptions = "--lock-tables=false --skip-extended-insert";
+
+if(!fs.existsSync("./application.json")){
+  terminate("./application.json not found.", "make your own copy from ./application.json.example then configure it based on your system spec.");
+}
+
+const appconfig = require('./application.json');
 
 function log(...message){
   var curseconds = new Date().getTime();
